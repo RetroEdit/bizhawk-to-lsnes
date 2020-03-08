@@ -5,6 +5,7 @@ import zipfile
 import hashlib
 import json
 import copy
+from tqdm import tqdm
 
 bk2_path = sys.argv[1]
 if not os.path.isfile(bk2_path):
@@ -136,7 +137,7 @@ conmap = conmaps[str(lsmv_dict['port1'] + lsmv_dict['port2'])]
 
 bk2_inputs = bk2.open('Input Log.txt')
 frameNum = 0
-for line in iter(bk2_inputs):
+for line in tqdm(iter(bk2_inputs), desc='processing bizhawk side'):
     frame = frameNum
     line = line.strip()
     if line[:1] != '|':
@@ -219,7 +220,7 @@ totalFrames = frameNum - 1
 
 # Generate lsnes Inputfile
 lsmv_dict['input'] = str()
-for frameNum in range(totalFrames):
+for frameNum in tqdm(range(totalFrames), desc='lsnes side'):
     frameStr = 'F'
     if input_data['System']['SoftReset'][frameNum]:
         frameStr += 'R'
