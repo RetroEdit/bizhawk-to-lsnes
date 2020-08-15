@@ -35,15 +35,16 @@ if not header_dict['Platform'] == 'SNES':
     sys.exit(1)
 
 # Set basic settings
-lsmv_dict = {}
-lsmv_dict['controlsversion'] = '0'
-lsmv_dict['coreversion'] = 'bsnes v085 (Compatibility core)'
-lsmv_dict['gametype'] = 'snes_ntsc'
-lsmv_dict['systemid'] = 'lsnes-rr1'
-lsmv_dict['setting.hardreset'] = '1'
-lsmv_dict['authors'] = header_dict['Author']
-lsmv_dict['rom.hint'] = header_dict['GameName']
-lsmv_dict['projectid'] = hashlib.md5(str(header_dict)).hexdigest()
+lsmv_dict = {
+    'controlsversion': '0',
+    'coreversion': 'bsnes v085 (Compatibility core)',
+    'gametype': 'snes_ntsc',
+    'systemid': 'lsnes-rr1',
+    'setting.hardreset': '1',
+    'authors': header_dict['Author'],
+    'rom.hint': header_dict['GameName'],
+    'projectid': hashlib.md5(str(header_dict)).hexdigest()
+}
 
 # Controller Configuration
 jsonfile = bk2.open('SyncSettings.json')
@@ -57,6 +58,10 @@ try:
     lsmv_dict['port2'] = bh_controller[str(jsondict['o']['RightPort'])]
 except KeyError:
     lsmv_dict['port2'] = 'gamepad'
+
+# RetroEdit: This whole section is bleh.
+# Why are there these blocks of data?
+# I think this code is wrong; I doubt the LSMV format works like this.
 # Generate rrdata
 rrlist = []
 rrc16m = '\x7F\x00\xFE\xFE\xFE'
@@ -103,19 +108,11 @@ lsmv_dict['rrdata'] = rrdata
 
 # Input Conversion
 controller = {}
-controller['A'] = {}
-controller['B'] = {}
-controller['X'] = {}
-controller['Y'] = {}
-controller['u'] = {}
-controller['d'] = {}
-controller['l'] = {}
-controller['r'] = {}
-controller['s'] = {}
-controller['S'] = {}
-controller['L'] = {}
-controller['R'] = {}
+for button_name in 'ABXYudlrsSLR':
+    controller[button_name] = {}
 
+# RetroEdit: This is a fundamentally bad way to structure it.
+# deepcopy should be unnecessary here.
 input_data = {}
 input_data['System'] = {'SoftReset': {}, 'HardReset': {}}
 if lsmv_dict['port1'] == 'gamepad':
@@ -127,22 +124,19 @@ if lsmv_dict['port2'] == 'gamepad':
 if lsmv_dict['port2'] == 'multitap':
     input_data['Port2'] = {'P5': copy.deepcopy(controller), 'P6': copy.deepcopy(controller), 'P7': copy.deepcopy(controller), 'P8': copy.deepcopy(controller)}
 
-conmaps = {
-'gamepadnone': ['System', ('Port1', 'P1')],
-'nonegamepad': ['System', ('Port2', 'P5')],
-'gamepadgamepad': ['System', ('Port1', 'P1'), ('Port2', 'P5')],
-'multitapnone': ['System', ('Port1', 'P1'), ('Port1', 'P2'), ('Port1', 'P3'), ('Port1', 'P4')],
-'nonemultitap': ['System', ('Port2', 'P5'), ('Port2', 'P6'), ('Port2', 'P7'), ('Port2', 'P8')],
-'multitapgamepad': ['System', ('Port1', 'P1'), ('Port1', 'P2'), ('Port1', 'P3'), ('Port1', 'P4'), ('Port2', 'P5')],
-'gamepadmultitap': ['System', ('Port1', 'P1'), ('Port2', 'P5'), ('Port2', 'P6'), ('Port2', 'P7'), ('Port2', 'P8')],
-'multitapmultitap': ['System', ('Port1', 'P1'), ('Port1', 'P2'), ('Port1', 'P3'), ('Port1', 'P4'), ('Port2', 'P5'), ('Port2', 'P6'), ('Port2', 'P7'), ('Port2', 'P8')],
-}
-conmap = conmaps[str(lsmv_dict['port1'] + lsmv_dict['port2'])]
+device_num_controllers = {'none': 0, 'gamepad': 1, 'multitap': 4}
+def get_conmap(port_num, device):
+    pnum_offset = 0
+    if port_num == 2:
+        pnum_offset = 4
+    return [
+        ('Port' + str(port_num), 'P' + str(pnum_offset + pnum))
+        for pnum in range(device_num_controllers[device])
+    ]
+conmap = ['System'] + get_conmap(1, lsmv_dict['port1']) + get_conmap(2, lsmv_dict['port2'])
 
 bk2_inputs = bk2.open('Input Log.txt')
-frameNum = 0
-for line in tqdm(iter(bk2_inputs), desc='processing bizhawk side'):
-    frame = frameNum
+for frame, line in tqdm(enumerate(bk2_inputs), desc='processing bizhawk side'):
     line = line.strip()
     if line[:1] != '|':
         continue
@@ -185,6 +179,7 @@ for line in tqdm(iter(bk2_inputs), desc='processing bizhawk side'):
             input_data[port][player]['r'][frame] = True
         else:
             input_data[port][player]['r'][frame] = False
+
         # A B X Y
         if frame_inputs[pNum][9] == 'A':
             input_data[port][player]['A'][frame] = True
@@ -202,6 +197,7 @@ for line in tqdm(iter(bk2_inputs), desc='processing bizhawk side'):
             input_data[port][player]['Y'][frame] = True
         else:
             input_data[port][player]['Y'][frame] = False
+
         # Select Start LBump RBump
         if frame_inputs[pNum][4] == 's':
             input_data[port][player]['s'][frame] = True
@@ -219,28 +215,28 @@ for line in tqdm(iter(bk2_inputs), desc='processing bizhawk side'):
             input_data[port][player]['R'][frame] = True
         else:
             input_data[port][player]['R'][frame] = False
-    frameNum = frameNum + 1
-totalFrames = frameNum - 1
+# RetroEdit: Bad
+totalFrames = frame - 1
 
 # Generate lsnes Inputfile
 
 # RetroEdit: Probably revise this later.
 BUTTONS = 'BYsSudlrAXLR'
 NUM_BUTTONS = len(BUTTONS)
-CLEAR_BUTTON_BLOCK = '.' * NUM_BUTTONS + '|'
+CLEAR_BUTTON_BLOCK = '.' * NUM_BUTTONS
 NUM_PLAYERS = 8
 
 lsmv_dict['input'] = []
 for frameNum in tqdm(range(totalFrames), desc='lsnes side'):
-    frameStr = 'F..|'
+    input_start = 'F..|'
     # RetroEdit: Still a bit questionable, but better.
     if input_data['System']['SoftReset'][frameNum]:
-        frameStr[1] = 'R'
+        input_start[1] = 'R'
     if input_data['System']['HardReset'][frameNum]:
-        frameStr[2] = 'H'
+        input_start[2] = 'H'
+    player_inputs = []
     for p_num in range(1, NUM_PLAYERS + 1):
         player = 'P' + str(p_num)
-        # RetroEdit: This may be refactored out later.
         if p_num < 5:
             port = 'Port1'
         else:
@@ -250,19 +246,19 @@ for frameNum in tqdm(range(totalFrames), desc='lsnes side'):
             for i, button_name in enumerate(BUTTONS):
                 if input_data[port][player][button_name][frameNum]:
                     button_block[i] = button_name
-            frameStr += button_block
+            player_inputs.append(button_block)
 
-    # RetroEdit: Using -1 to do this is bad. TODO: Fix.
-    #print(frameStr[:-1])
-    frameStr = frameStr[:-1] + "\n"
-    lsmv_dict['input'].append(frameStr)
+    frame_str = input_start + '|'.join(player_inputs)
+    # print(frame_str)
+    lsmv_dict['input'].append(frame_str)
 
 # RetroEdit: This isn't the cleanest code to do this,
 # but it's better than the string concatenation that happened before.
-lsmv_dict['input'] = ''.join(lsmv_dict['input'])
+# 2. Do we want an extra newline at the end?
+lsmv_dict['input'] = '\n'.join(lsmv_dict['input'])
 
 # Creating the lsmv file
 lsmv = zipfile.ZipFile(lsmv_abs, 'w')
-for file in iter(lsmv_dict):
-    lsmv.writestr(file, lsmv_dict[file])
+for file_name, contents in lsmv_dict.items():
+    lsmv.writestr(file, contents)
 lsmv.close()
