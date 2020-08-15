@@ -5,7 +5,11 @@ import zipfile
 import hashlib
 import json
 import copy
-from tqdm import tqdm
+try:
+    from tqdm import tqdm
+except ImportError:
+    def tqdm(it):
+        return it
 
 bk2_path = sys.argv[1]
 if not os.path.isfile(bk2_path):
@@ -149,7 +153,7 @@ for line in tqdm(iter(bk2_inputs), desc='processing bizhawk side'):
     frame_inputs.pop()
     if frame_inputs[-1] == '':
         frame_inputs.pop()
-    
+
     # SYSTEM
     if frame_inputs[0][0] == 'r':
         input_data['System']['SoftReset'][frame] = True
@@ -159,7 +163,7 @@ for line in tqdm(iter(bk2_inputs), desc='processing bizhawk side'):
         input_data['System']['HardReset'][frame] = True
     else:
         input_data['System']['HardReset'][frame] = False
-    
+
     # CONTROLLERS
     for pNum in range(1,len(frame_inputs)):
         port = str(conmap[pNum][0])
@@ -219,133 +223,43 @@ for line in tqdm(iter(bk2_inputs), desc='processing bizhawk side'):
 totalFrames = frameNum - 1
 
 # Generate lsnes Inputfile
-lsmv_dict['input'] = str()
+
+# RetroEdit: Probably revise this later.
+BUTTONS = 'BYsSudlrAXLR'
+NUM_BUTTONS = len(BUTTONS)
+CLEAR_BUTTON_BLOCK = '.' * NUM_BUTTONS + '|'
+NUM_PLAYERS = 8
+
+lsmv_dict['input'] = []
 for frameNum in tqdm(range(totalFrames), desc='lsnes side'):
-    frameStr = 'F'
+    frameStr = 'F..|'
+    # RetroEdit: Still a bit questionable, but better.
     if input_data['System']['SoftReset'][frameNum]:
-        frameStr += 'R'
-    else:
-        frameStr += '.'
+        frameStr[1] = 'R'
     if input_data['System']['HardReset'][frameNum]:
-        frameStr += 'H'
-    else:
-        frameStr += '.'
-    frameStr += '|'
-    for pNum in range(1,5):
-        player = 'P' + str(pNum)
-        port = 'Port1'
+        frameStr[2] = 'H'
+    for p_num in range(1, NUM_PLAYERS + 1):
+        player = 'P' + str(p_num)
+        # RetroEdit: This may be refactored out later.
+        if p_num < 5:
+            port = 'Port1'
+        else:
+            port = 'Port2'
         if player in input_data[port]:
-            # B Y Select Start
-            if input_data[port][player]['B'][frameNum]:
-                frameStr += 'B'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['Y'][frameNum]:
-                frameStr += 'Y'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['s'][frameNum]:
-                frameStr += 's'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['S'][frameNum]:
-                frameStr += 'S'
-            else:
-                frameStr += '.'
-            # Up Down Left Right
-            if input_data[port][player]['u'][frameNum]:
-                frameStr += 'u'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['d'][frameNum]:
-                frameStr += 'd'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['l'][frameNum]:
-                frameStr += 'l'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['r'][frameNum]:
-                frameStr += 'r'
-            else:
-                frameStr += '.'
-            # A X LBump RBump
-            if input_data[port][player]['A'][frameNum]:
-                frameStr += 'A'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['X'][frameNum]:
-                frameStr += 'X'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['L'][frameNum]:
-                frameStr += 'L'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['R'][frameNum]:
-                frameStr += 'R'
-            else:
-                frameStr += '.'
-            frameStr += '|'
-    for pNum in range(5,9):
-        player = 'P' + str(pNum)
-        port = 'Port2'
-        if player in input_data[port]:
-            # B Y Select Start
-            if input_data[port][player]['B'][frameNum]:
-                frameStr += 'B'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['Y'][frameNum]:
-                frameStr += 'Y'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['s'][frameNum]:
-                frameStr += 's'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['S'][frameNum]:
-                frameStr += 'S'
-            else:
-                frameStr += '.'
-            # Up Down Left Right
-            if input_data[port][player]['u'][frameNum]:
-                frameStr += 'u'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['d'][frameNum]:
-                frameStr += 'd'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['l'][frameNum]:
-                frameStr += 'l'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['r'][frameNum]:
-                frameStr += 'r'
-            else:
-                frameStr += '.'
-            # A X LBump RBump
-            if input_data[port][player]['A'][frameNum]:
-                frameStr += 'A'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['X'][frameNum]:
-                frameStr += 'X'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['L'][frameNum]:
-                frameStr += 'L'
-            else:
-                frameStr += '.'
-            if input_data[port][player]['R'][frameNum]:
-                frameStr += 'R'
-            else:
-                frameStr += '.'
-            frameStr += '|'
+            button_block = CLEAR_BUTTON_BLOCK
+            for i, button_name in enumerate(BUTTONS):
+                if input_data[port][player][button_name][frameNum]:
+                    button_block[i] = button_name
+            frameStr += button_block
+
+    # RetroEdit: Using -1 to do this is bad. TODO: Fix.
     #print(frameStr[:-1])
     frameStr = frameStr[:-1] + "\n"
-    lsmv_dict['input'] += frameStr
+    lsmv_dict['input'].append(frameStr)
+
+# RetroEdit: This isn't the cleanest code to do this,
+# but it's better than the string concatenation that happened before.
+lsmv_dict['input'] = ''.join(lsmv_dict['input'])
 
 # Creating the lsmv file
 lsmv = zipfile.ZipFile(lsmv_abs, 'w')
