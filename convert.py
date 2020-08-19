@@ -20,7 +20,8 @@ if len(sys.argv) == 3:
     lsmv_path = sys.argv[2]
     lsmv_abs = os.path.abspath(lsmv_path)
 else:
-    lsmv_abs = os.path.splitext(bk2_abs)[0]+'.lsmv'
+    lsmv_abs = os.path.splitext(bk2_abs)[0] + '.lsmv'
+
 bk2 = zipfile.ZipFile(bk2_abs)
 header = bk2.open('Header.txt')
 header_dict = {}
@@ -74,35 +75,31 @@ try:
 except KeyError:
     rrcount = 1
 lsmv_dict['rerecords'] = str(rrcount)
-while rrcount > 0:
+while True:
     if rrcount >= 16777216:
         rrlist.append(rrc16m)
         rrcount = 0
-        continue
-    if rrcount >= 1048576:
+    elif rrcount >= 1048576:
         rrlist.append(rrc1m)
         rrcount -= 1048576
-        continue
-    if rrcount >= 65536:
+    elif rrcount >= 65536:
         rrlist.append(rrc65k)
         rrcount -= 65536
-        continue
-    if rrcount >= 4096:
+    elif rrcount >= 4096:
         rrlist.append(rrc4k)
         rrcount -= 4096
-        continue
-    if rrcount >= 256:
+    elif rrcount >= 256:
         rrlist.append(rrc256)
         rrcount -= 256
-        continue
-    if rrcount > 1:
+    elif rrcount > 1:
         rrlist.append('\x3F\x00' + chr(rrcount - 2))
         rrcount = 0
-        continue
-    if rrcount == 1:
+    elif rrcount == 1:
         rrlist.append('\x1F\x00')
         rrcount = 0
-        continue
+	elif rrcount <= 0:
+		break
+	
 rrdata = ''.join(rrlist)
 lsmv_dict['rrdata'] = rrdata
 
@@ -138,13 +135,9 @@ conmap = ['System'] + get_conmap(1, lsmv_dict['port1']) + get_conmap(2, lsmv_dic
 bk2_inputs = bk2.open('Input Log.txt')
 for frame, line in tqdm(enumerate(bk2_inputs), desc='processing bizhawk side'):
     line = line.strip()
-    if line[:1] != '|':
+    if not line.startswith('|') or line == '':
         continue
-    if line == '':
-        continue
-    frame_inputs = line.split('|')
-    del frame_inputs[0]
-    frame_inputs.pop()
+    frame_inputs = line.split('|')[1:-1]
     if frame_inputs[-1] == '':
         frame_inputs.pop()
 
