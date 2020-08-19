@@ -23,9 +23,9 @@ else:
     lsmv_abs = os.path.splitext(bk2_abs)[0] + '.lsmv'
 
 bk2 = zipfile.ZipFile(bk2_abs)
-header = bk2.open('Header.txt')
+header = bk2.read('Header.txt').decode('latin_1')
 header_dict = {}
-for line in iter(header):
+for line in header.split('\n'):
     line = line.strip()
     if line:
         k, v = line.split(' ', 1)
@@ -44,7 +44,8 @@ lsmv_dict = {
     'setting.hardreset': '1',
     'authors': header_dict['Author'],
     'rom.hint': header_dict['GameName'],
-    'projectid': hashlib.md5(str(header_dict)).hexdigest()
+    # RetroEdit: This looks arbitrary; it's probably "randomly" chosen
+    'projectid': hashlib.md5(str(header_dict).encode('latin_1')).hexdigest()
 }
 
 # Controller Configuration
@@ -106,7 +107,7 @@ BK2_BTN  = 'UDLRsSYBXAlr'
 LSMV_BTN = 'BYsSudlrAXLR'
 NUM_BTN = len(LSMV_BTN)
 REORDER_BTN = [
-    LSMV.find(b.swapcase() if b in 'UDLR' else b)
+    LSMV_BTN.find(b.swapcase() if b in 'UDLR' else b)
     for i, b in
     enumerate(BK2_BTN)
 ]
@@ -114,8 +115,8 @@ BK2_SYS_BTN  = 'rP'
 LSMV_SYS_BTN = 'RH'
 NUM_SYS_BTN = len(BK2_SYS_BTN)
 
-bk2_inputs = bk2.open('Input Log.txt').split('\n')
-lsmv_inputs = [None] * len(inputs)
+bk2_inputs = bk2.read('Input Log.txt').decode('latin_1').split('\n')
+lsmv_inputs = [None] * len(bk2_inputs)
 l = 0
 for line in bk2_inputs:
     line = line.strip()
@@ -124,14 +125,14 @@ for line in bk2_inputs:
     line_parts = line.split('|')[1:-1]
     for p, part in enumerate(line_parts):
         if len(part) == NUM_SYS_BTN:
-            new_part = 'F..'
+            new_part = list('F..')
             # TODO: This code should probably be more generic
             if part[0] != '.':
                 new_part[1] = 'R'
             elif part[1] != '.':
                 new_part[2] = 'H'
-        if len(part) == NUM_BTN:
-            new_part = '.' * NUM_BTN
+        elif len(part) == NUM_BTN:
+            new_part = ['.'] * NUM_BTN
             for i, b in enumerate(part):
                 if b != '.':
                     # Could warn if b != BK2_BTN[i]
@@ -140,7 +141,7 @@ for line in bk2_inputs:
         else:
             # TODO: need to warn under certain conditions
             continue
-        line_parts[p] = new_part
+        line_parts[p] = ''.join(new_part)
     lsmv_inputs[l] = '|'.join(line_parts)
     l += 1
 # Hack to efficiently remove trailing items off the end
@@ -155,5 +156,5 @@ lsmv_dict['input'] = '\n'.join(lsmv_inputs)
 # Creating the lsmv file
 lsmv = zipfile.ZipFile(lsmv_abs, 'w')
 for file_name, contents in lsmv_dict.items():
-    lsmv.writestr(file, contents)
+    lsmv.writestr(file_name, contents)
 lsmv.close()
