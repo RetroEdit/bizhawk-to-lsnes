@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+"""
+SNES BK2 to LSMV converter
+Originally by TheMas3212
+Ported to Python 3 and partially rewritten by RetroEdit
+"""
 import sys
 import os
 import zipfile
