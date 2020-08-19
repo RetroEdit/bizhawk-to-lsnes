@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 import sys
 import os
 import zipfile
@@ -27,10 +27,10 @@ header = bk2.open('Header.txt')
 header_dict = {}
 for line in iter(header):
     line = line.strip()
-    if line == '':
-        continue
-    line_split = line.split(' ',1)
-    header_dict[line_split[0]] = line_split[1]
+    if line:
+        k, v = line.split(' ', 1)
+        if k not in header_dict:
+            header_dict[k] = v
 if not header_dict['Platform'] == 'SNES':
     print('ERROR: Movie not for SNES, Quiting')
     sys.exit(1)
@@ -97,158 +97,60 @@ while True:
     elif rrcount == 1:
         rrlist.append('\x1F\x00')
         rrcount = 0
-	elif rrcount <= 0:
-		break
-	
+    elif rrcount <= 0:
+        break
 rrdata = ''.join(rrlist)
 lsmv_dict['rrdata'] = rrdata
 
-# Input Conversion
-controller = {}
-for button_name in 'ABXYudlrsSLR':
-    controller[button_name] = {}
+BK2_BTN  = 'UDLRsSYBXAlr'
+LSMV_BTN = 'BYsSudlrAXLR'
+NUM_BTN = len(LSMV_BTN)
+REORDER_BTN = [
+    LSMV.find(b.swapcase() if b in 'UDLR' else b)
+    for i, b in
+    enumerate(BK2_BTN)
+]
+BK2_SYS_BTN  = 'rP'
+LSMV_SYS_BTN = 'RH'
+NUM_SYS_BTN = len(BK2_SYS_BTN)
 
-# RetroEdit: This is a fundamentally bad way to structure it.
-# deepcopy should be unnecessary here.
-input_data = {}
-input_data['System'] = {'SoftReset': {}, 'HardReset': {}}
-if lsmv_dict['port1'] == 'gamepad':
-    input_data['Port1'] = {'P1': copy.deepcopy(controller)}
-if lsmv_dict['port1'] == 'multitap':
-    input_data['Port1'] = {'P1': copy.deepcopy(controller), 'P2': copy.deepcopy(controller), 'P3': copy.deepcopy(controller), 'P4': copy.deepcopy(controller)}
-if lsmv_dict['port2'] == 'gamepad':
-    input_data['Port2'] = {'P5': copy.deepcopy(controller)}
-if lsmv_dict['port2'] == 'multitap':
-    input_data['Port2'] = {'P5': copy.deepcopy(controller), 'P6': copy.deepcopy(controller), 'P7': copy.deepcopy(controller), 'P8': copy.deepcopy(controller)}
-
-device_num_controllers = {'none': 0, 'gamepad': 1, 'multitap': 4}
-def get_conmap(port_num, device):
-    pnum_offset = 0
-    if port_num == 2:
-        pnum_offset = 4
-    return [
-        ('Port' + str(port_num), 'P' + str(pnum_offset + pnum))
-        for pnum in range(device_num_controllers[device])
-    ]
-conmap = ['System'] + get_conmap(1, lsmv_dict['port1']) + get_conmap(2, lsmv_dict['port2'])
-
-bk2_inputs = bk2.open('Input Log.txt')
-for frame, line in tqdm(enumerate(bk2_inputs), desc='processing bizhawk side'):
+bk2_inputs = bk2.open('Input Log.txt').split('\n')
+lsmv_inputs = [None] * len(inputs)
+l = 0
+for line in bk2_inputs:
     line = line.strip()
     if not line.startswith('|') or line == '':
         continue
-    frame_inputs = line.split('|')[1:-1]
-    if frame_inputs[-1] == '':
-        frame_inputs.pop()
-
-    # SYSTEM
-    if frame_inputs[0][0] == 'r':
-        input_data['System']['SoftReset'][frame] = True
-    else:
-        input_data['System']['SoftReset'][frame] = False
-    if frame_inputs[0][1] == 'P':
-        input_data['System']['HardReset'][frame] = True
-    else:
-        input_data['System']['HardReset'][frame] = False
-
-    # CONTROLLERS
-    for pNum in range(1,len(frame_inputs)):
-        port = str(conmap[pNum][0])
-        player = str(conmap[pNum][1])
-        # Up Down Left Right
-        if frame_inputs[pNum][0] == 'U':
-            input_data[port][player]['u'][frame] = True
+    line_parts = line.split('|')[1:-1]
+    for p, part in enumerate(line_parts):
+        if len(part) == NUM_SYS_BTN:
+            new_part = 'F..'
+            # TODO: This code should probably be more generic
+            if part[0] != '.':
+                new_part[1] = 'R'
+            elif part[1] != '.':
+                new_part[2] = 'H'
+        if len(part) == NUM_BTN:
+            new_part = '.' * NUM_BTN
+            for i, b in enumerate(part):
+                if b != '.':
+                    # Could warn if b != BK2_BTN[i]
+                    j = REORDER_BTN[i]
+                    new_part[j] = LSMV_BTN[j]
         else:
-            input_data[port][player]['u'][frame] = False
-        if frame_inputs[pNum][1] == 'D':
-            input_data[port][player]['d'][frame] = True
-        else:
-            input_data[port][player]['d'][frame] = False
-        if frame_inputs[pNum][2] == 'L':
-            input_data[port][player]['l'][frame] = True
-        else:
-            input_data[port][player]['l'][frame] = False
-        if frame_inputs[pNum][3] == 'R':
-            input_data[port][player]['r'][frame] = True
-        else:
-            input_data[port][player]['r'][frame] = False
-
-        # A B X Y
-        if frame_inputs[pNum][9] == 'A':
-            input_data[port][player]['A'][frame] = True
-        else:
-            input_data[port][player]['A'][frame] = False
-        if frame_inputs[pNum][7] == 'B':
-            input_data[port][player]['B'][frame] = True
-        else:
-            input_data[port][player]['B'][frame] = False
-        if frame_inputs[pNum][8] == 'X':
-            input_data[port][player]['X'][frame] = True
-        else:
-            input_data[port][player]['X'][frame] = False
-        if frame_inputs[pNum][6] == 'Y':
-            input_data[port][player]['Y'][frame] = True
-        else:
-            input_data[port][player]['Y'][frame] = False
-
-        # Select Start LBump RBump
-        if frame_inputs[pNum][4] == 's':
-            input_data[port][player]['s'][frame] = True
-        else:
-            input_data[port][player]['s'][frame] = False
-        if frame_inputs[pNum][5] == 'S':
-            input_data[port][player]['S'][frame] = True
-        else:
-            input_data[port][player]['S'][frame] = False
-        if frame_inputs[pNum][10] == 'l':
-            input_data[port][player]['L'][frame] = True
-        else:
-            input_data[port][player]['L'][frame] = False
-        if frame_inputs[pNum][11] == 'r':
-            input_data[port][player]['R'][frame] = True
-        else:
-            input_data[port][player]['R'][frame] = False
-# RetroEdit: Bad
-totalFrames = frame - 1
-
-# Generate lsnes Inputfile
-
-# RetroEdit: Probably revise this later.
-BUTTONS = 'BYsSudlrAXLR'
-NUM_BUTTONS = len(BUTTONS)
-CLEAR_BUTTON_BLOCK = '.' * NUM_BUTTONS
-NUM_PLAYERS = 8
-
-lsmv_dict['input'] = []
-for frameNum in tqdm(range(totalFrames), desc='lsnes side'):
-    input_start = 'F..|'
-    # RetroEdit: Still a bit questionable, but better.
-    if input_data['System']['SoftReset'][frameNum]:
-        input_start[1] = 'R'
-    if input_data['System']['HardReset'][frameNum]:
-        input_start[2] = 'H'
-    player_inputs = []
-    for p_num in range(1, NUM_PLAYERS + 1):
-        player = 'P' + str(p_num)
-        if p_num < 5:
-            port = 'Port1'
-        else:
-            port = 'Port2'
-        if player in input_data[port]:
-            button_block = CLEAR_BUTTON_BLOCK
-            for i, button_name in enumerate(BUTTONS):
-                if input_data[port][player][button_name][frameNum]:
-                    button_block[i] = button_name
-            player_inputs.append(button_block)
-
-    frame_str = input_start + '|'.join(player_inputs)
-    # print(frame_str)
-    lsmv_dict['input'].append(frame_str)
+            # TODO: need to warn under certain conditions
+            continue
+        line_parts[p] = new_part
+    lsmv_inputs[l] = '|'.join(line_parts)
+    l += 1
+# Hack to efficiently remove trailing items off the end
+while len(lsmv_inputs) > l:
+    lsmv_inputs.pop()
 
 # RetroEdit: This isn't the cleanest code to do this,
 # but it's better than the string concatenation that happened before.
 # 2. Do we want an extra newline at the end?
-lsmv_dict['input'] = '\n'.join(lsmv_dict['input'])
+lsmv_dict['input'] = '\n'.join(lsmv_inputs)
 
 # Creating the lsmv file
 lsmv = zipfile.ZipFile(lsmv_abs, 'w')
